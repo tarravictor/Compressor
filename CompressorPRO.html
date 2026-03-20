@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>File Compressor Pro</title>
+
+<!-- ✅ FAVICON -->
+<link rel="icon" type="image/png" href="https://static.thenounproject.com/png/2654815-200.png">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js"></script>
+
+<style>
+
+:root{
+--bg:#0b1a33;
+--card:#1e293b;
+--text:white;
+}
+
+body.light{
+--bg:#f1f5f9;
+--card:white;
+--text:#111;
+}
+
+*{
+box-sizing:border-box;
+margin:0;
+padding:0;
+font-family:system-ui;
+}
+
+body{
+background:var(--bg);
+color:var(--text);
+display:flex;
+justify-content:center;
+padding:40px;
+}
+
+.container{
+width:900px;
+max-width:95%;
+}
+
+.header{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:20px;
+}
+
+.upload{
+border:2px dashed #3b82f6;
+border-radius:12px;
+padding:55px;
+text-align:center;
+cursor:pointer;
+}
+
+.file{
+background:var(--card);
+border-radius:10px;
+padding:16px;
+margin-top:12px;
+display:flex;
+align-items:center;
+gap:15px;
+}
+
+.preview{
+width:45px;
+height:45px;
+border-radius:6px;
+object-fit:cover;
+}
+
+.icon{
+font-size:32px;
+}
+
+.file-info{
+flex:1;
+}
+
+.progress{
+height:6px;
+background:#334155;
+border-radius:6px;
+overflow:hidden;
+}
+
+.bar{
+height:100%;
+width:0%;
+background:#22c55e;
+transition:.3s;
+}
+
+.result{
+font-size:12px;
+margin-top:5px;
+color:#94a3b8;
+}
+
+button{
+border:none;
+border-radius:6px;
+padding:7px 14px;
+background:#3b82f6;
+color:white;
+cursor:pointer;
+}
+
+button:hover{
+opacity:.9;
+}
+
+.download{
+background:#22c55e;
+display:none;
+}
+
+.controls{
+margin-top:20px;
+display:flex;
+gap:10px;
+}
+
+.stats{
+margin-top:20px;
+font-size:14px;
+color:#94a3b8;
+display:flex;
+gap:20px;
+}
+
+.speed{
+margin-top:10px;
+font-size:13px;
+color:#94a3b8;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="header">
+<h2>File Compressor</h2>
+<button onclick="toggleTheme()">Toggle Theme</button>
+</div>
+
+<div id="upload" class="upload">
+Drop files or click to upload
+<input id="fileInput" type="file" multiple hidden>
+</div>
+
+<div id="list"></div>
+
+<div class="controls">
+<button onclick="compressAll()">Compress</button>
+<button onclick="resetAll()">Reset</button>
+</div>
+
+<div class="stats">
+<div>Files: <span id="count">0</span></div>
+<div>Original: <span id="before">0 MB</span></div>
+<div>Compressed: <span id="after">0 MB</span></div>
+<div>Saved: <span id="saved">0 MB</span></div>
+</div>
+
+<div class="speed">
+Compression Speed: <span id="speed">0</span> ms
+</div>
+
+</div>
+
+<script>
+
+const upload=document.getElementById("upload")
+const input=document.getElementById("fileInput")
+const list=document.getElementById("list")
+
+let files=[]
+
+upload.onclick=()=>input.click()
+
+input.onchange=e=>addFiles(e.target.files)
+
+upload.ondragover=e=>e.preventDefault()
+
+upload.ondrop=e=>{
+e.preventDefault()
+addFiles(e.dataTransfer.files)
+}
+
+function getIcon(file){
+if(file.type.startsWith("image")) return null
+if(file.type==="application/pdf") return "📕"
+if(file.name.endsWith(".docx")) return "📄"
+return "📁"
+}
+
+function addFiles(selected){
+for(const file of selected){
+
+files.push(file)
+
+let previewHTML=""
+
+if(file.type.startsWith("image")){
+previewHTML=`<img class="preview" src="${URL.createObjectURL(file)}">`
+}else{
+previewHTML=`<div class="icon">${getIcon(file)}</div>`
+}
+
+const div=document.createElement("div")
+div.className="file"
+
+div.innerHTML=`
+${previewHTML}
+<div class="file-info">
+<div>${file.name}</div>
+<div class="progress">
+<div class="bar"></div>
+</div>
+<div class="result"></div>
+</div>
+<button class="download">Download</button>
+`
+
+list.appendChild(div)
+}
+
+document.getElementById("count").innerText=files.length
+}
+
+function compressImage(file){
+return new Promise(resolve=>{
+const img=new Image()
+img.onload=()=>{
+const canvas=document.createElement("canvas")
+const ctx=canvas.getContext("2d")
+
+let max=1600
+let scale=Math.min(1,max/img.width)
+
+canvas.width=img.width*scale
+canvas.height=img.height*scale
+
+ctx.drawImage(img,0,0,canvas.width,canvas.height)
+
+let quality=file.type==="image/jpeg"?0.75:0.9
+
+canvas.toBlob(blob=>{
+resolve(blob)
+},file.type,quality)
+}
+img.src=URL.createObjectURL(file)
+})
+}
+
+async function compressPDF(file){
+const bytes=await file.arrayBuffer()
+const pdf=await PDFLib.PDFDocument.load(bytes)
+const data=await pdf.save({useObjectStreams:true})
+return new Blob([data],{type:"application/pdf"})
+}
+
+async function compressDocx(file){
+const zip=await JSZip.loadAsync(file)
+const images=Object.keys(zip.files).filter(p=>p.startsWith("word/media"))
+
+await Promise.all(images.map(async path=>{
+const img=await zip.files[path].async("blob")
+const compressed=await compressImage(img)
+zip.file(path,compressed)
+}))
+
+const blob=await zip.generateAsync({
+type:"blob",
+compression:"DEFLATE",
+compressionOptions:{level:6}
+})
+
+return new Blob([blob],{
+type:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+})
+}
+
+async function compressFile(file){
+if(file.type.startsWith("image")) return compressImage(file)
+if(file.type==="application/pdf") return compressPDF(file)
+if(file.name.endsWith(".docx")) return compressDocx(file)
+return file
+}
+
+async function compressAll(){
+const start=performance.now()
+const items=document.querySelectorAll(".file")
+
+let beforeTotal=0
+let afterTotal=0
+
+await Promise.all(files.map(async(file,i)=>{
+
+const bar=items[i].querySelector(".bar")
+const result=items[i].querySelector(".result")
+const btn=items[i].querySelector(".download")
+
+bar.style.width="40%"
+
+const compressed=await compressFile(file)
+
+bar.style.width="100%"
+
+let before=file.size
+let after=compressed.size
+
+beforeTotal+=before
+afterTotal+=after
+
+let saved=((before-after)/before*100).toFixed(1)
+
+result.innerHTML=
+`${(before/1024/1024).toFixed(2)} → ${(after/1024/1024).toFixed(2)} MB (${saved}% saved)`
+
+btn.style.display="block"
+
+btn.onclick=()=>{
+const ext=file.name.split(".").pop()
+const a=document.createElement("a")
+a.href=URL.createObjectURL(compressed)
+a.download=file.name.replace(`.${ext}`,`-compressed.${ext}`)
+a.click()
+}
+
+}))
+
+const end=performance.now()
+
+document.getElementById("speed").innerText=Math.round(end-start)
+
+document.getElementById("before").innerText=(beforeTotal/1024/1024).toFixed(2)+" MB"
+document.getElementById("after").innerText=(afterTotal/1024/1024).toFixed(2)+" MB"
+document.getElementById("saved").innerText=((beforeTotal-afterTotal)/1024/1024).toFixed(2)+" MB"
+}
+
+function resetAll(){
+files=[]
+list.innerHTML=""
+
+document.getElementById("count").innerText=0
+document.getElementById("before").innerText="0 MB"
+document.getElementById("after").innerText="0 MB"
+document.getElementById("saved").innerText="0 MB"
+document.getElementById("speed").innerText="0"
+}
+
+function toggleTheme(){
+document.body.classList.toggle("light")
+}
+
+</script>
+
+</body>
+</html>
